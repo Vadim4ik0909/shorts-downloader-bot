@@ -47,15 +47,14 @@ def _run_ytdlp(
         "no_warnings": True,
         "noplaylist": is_youtube,
         "merge_output_format": "mp4",
-        # Надаємо перевагу mp4, дозволяємо якісні відео (компресор стисне, якщо буде > 50 МБ)
-        "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
+        "format": "bestvideo+bestaudio/best",
         "progress_hooks": [ytdlp_progress_hook],
     }
 
     if is_youtube:
         ydl_opts["extractor_args"] = {
             "youtube": {
-                "player_client": ["android", "web"]
+                "player_client": ["android"]
             }
         }
 
