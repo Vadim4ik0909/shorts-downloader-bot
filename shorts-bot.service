@@ -1,0 +1,14 @@
+[Unit]
+Description=Telegram Shorts Downloader Bot
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/bot-dowloder-shorts
+ExecStart=/root/bot-dowloder-shorts/.venv/bin/python main.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

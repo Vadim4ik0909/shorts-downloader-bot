@@ -1,0 +1,16 @@
+services:
+  bot:
+    build: .
+    container_name: shorts_downloader_bot
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      # Збереження кешу бази даних між перезапусками контейнера
+      - ./bot_cache.db:/app/bot_cache.db
+      - ./temp:/app/temp
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
