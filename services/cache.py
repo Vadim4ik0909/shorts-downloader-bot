@@ -13,7 +13,7 @@ DB_PATH = BASE_DIR / "bot_cache.db"
 
 TRACKING_PARAMS = {
     "si", "feature", "igsh", "utm_source", "utm_medium",
-    "utm_campaign", "utm_term", "utm_content", "fbclid", "gclid"
+    "utm_campaign", "utm_term", "utm_content", "fbclid", "gclid", "exln"
 }
 
 

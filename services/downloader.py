@@ -4,6 +4,7 @@ import shutil
 from pathlib import Path
 from typing import Callable, Optional
 
+from services.cache import normalize_url
 from services.instagram import download_instagram
 from services.models import DownloadResult
 from services.tiktok import download_tiktok
@@ -29,6 +30,7 @@ async def download_media(
     """
     Головний диспетчер завантаження з підтримкою TikTok, Instagram (фото/каруселі/reels) та YouTube.
     """
+    url = normalize_url(url)
     url_lower = url.lower()
 
     # 1. Instagram (пости з фотографіями, каруселі та Reels у максимальній якості)

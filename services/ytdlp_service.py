@@ -23,7 +23,7 @@ def _run_ytdlp(
     loop: asyncio.AbstractEventLoop,
     on_progress: Optional[Callable[[float, float, float, Optional[float]], None]] = None
 ) -> Optional[dict]:
-    """Синхронна функція для виконання yt-dlp з підтримкою прогрес-хука."""
+    """Синхронна функція для виконання yt-dlp з підтримкою прогрес-хука та мульти-клієнтного fallback."""
     is_youtube = any(domain in url.lower() for domain in ["youtube.com", "youtu.be"])
 
     def ytdlp_progress_hook(d):
@@ -41,29 +41,46 @@ def _run_ytdlp(
                 except Exception:
                     pass
 
-    ydl_opts = {
-        "outtmpl": str(work_dir / "%(autonumber)02d_%(id)s.%(ext)s"),
-        "quiet": True,
-        "no_warnings": True,
-        "noplaylist": is_youtube,
-        "merge_output_format": "mp4",
-        "format": "bestvideo+bestaudio/best",
-        "progress_hooks": [ytdlp_progress_hook],
-    }
+    # Стратегії для YouTube (якщо одна блокується дата-центром або SABR-стрімінгом, автоматично пробуємо наступну)
+    strategies = [
+        {"player_client": ["android", "tv"]},
+        {"player_client": ["tv"]},
+        {"player_client": ["android"]},
+    ] if is_youtube else [None]
 
-    if is_youtube:
-        ydl_opts["extractor_args"] = {
-            "youtube": {
-                "player_client": ["android"]
-            }
+    last_error = None
+    for strategy in strategies:
+        ydl_opts = {
+            "outtmpl": str(work_dir / "%(autonumber)02d_%(id)s.%(ext)s"),
+            "quiet": True,
+            "no_warnings": True,
+            "noplaylist": is_youtube,
+            "merge_output_format": "mp4",
+            "format": "bestvideo+bestaudio/best",
+            "progress_hooks": [ytdlp_progress_hook],
+            "remote_components": ["ejs:github"],
         }
 
-    if COOKIES_FILE and os.path.exists(COOKIES_FILE):
-        ydl_opts["cookiefile"] = COOKIES_FILE
+        if is_youtube and strategy:
+            ydl_opts["extractor_args"] = {
+                "youtube": strategy
+            }
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        return info
+        if COOKIES_FILE and os.path.exists(COOKIES_FILE):
+            ydl_opts["cookiefile"] = COOKIES_FILE
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                if info:
+                    return info
+        except Exception as e:
+            last_error = e
+            logger.warning(f"Стратегія {strategy} не вдалася: {e}. Пробуємо запасний варіант...")
+
+    if last_error:
+        raise last_error
+    return None
 
 
 async def download_with_ytdlp(
@@ -71,8 +88,8 @@ async def download_with_ytdlp(
     on_progress: Optional[Callable[[float, float, float, Optional[float]], None]] = None
 ) -> Optional[DownloadResult]:
     """
-    Асинхронне завантаження медіа за допомогою yt-dlp з підтримкою прогрес-бару
-    та автоматичного стиснення відео через ffmpeg.
+    Асинхронне завантаження медіа за допомогою yt-dlp з підтримкою прогрес-бару,
+    мультистратегій YouTube та автоматичного стиснення відео через ffmpeg.
     """
     session_id = uuid.uuid4().hex[:8]
     work_dir = TEMP_DIR / f"ytdlp_{session_id}"
@@ -103,7 +120,6 @@ async def download_with_ytdlp(
             ext = file_path.suffix.lower()
 
             if ext in VIDEO_EXTENSIONS:
-                # Автоматичне стиснення відео через ffmpeg, якщо розмір перевищує ліміт Telegram (50 МБ)
                 final_video_path = await compress_video_if_needed(file_path)
 
                 duration = info.get("duration")
@@ -120,9 +136,10 @@ async def download_with_ytdlp(
                     )
                 )
             elif ext in IMAGE_EXTENSIONS:
+                # Зображення надсилаємо як document для максимальної якості без стиснення
                 items.append(
                     MediaItem(
-                        media_type="photo",
+                        media_type="document",
                         file_path=file_path,
                         caption=title if len(items) == 0 else None
                     )

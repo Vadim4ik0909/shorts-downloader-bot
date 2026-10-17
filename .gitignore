@@ -14,3 +14,5 @@ cookies.txt
 .DS_Store
 bot_cache.db
 anime_downloader/
+bot_service.sh
+com.animedownloader.bot.plist
