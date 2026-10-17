@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Callable, Optional
 import yt_dlp
 
-from config import COOKIES_FILE, TEMP_DIR
+from config import COOKIES_FILE, PROXY, TEMP_DIR
 from services.compressor import compress_video_if_needed
 from services.models import DownloadResult, MediaItem
 
@@ -41,11 +41,14 @@ def _run_ytdlp(
                 except Exception:
                     pass
 
-    # Стратегії для YouTube (якщо одна блокується дата-центром або SABR-стрімінгом, автоматично пробуємо наступну)
+    # Стратегії для YouTube:
+    # 1. visionos + android (VisionOS наразі взагалі не підпадає під бот-блокування)
+    # 2. android + ios
+    # 3. default (без обмежень)
     strategies = [
-        {"player_client": ["android", "tv"]},
-        {"player_client": ["tv"]},
-        {"player_client": ["android"]},
+        {"player_client": ["visionos", "android"]},
+        {"player_client": ["android", "ios"]},
+        None,
     ] if is_youtube else [None]
 
     last_error = None
@@ -60,6 +63,9 @@ def _run_ytdlp(
             "progress_hooks": [ytdlp_progress_hook],
             "remote_components": ["ejs:github"],
         }
+
+        if PROXY:
+            ydl_opts["proxy"] = PROXY
 
         if is_youtube and strategy:
             ydl_opts["extractor_args"] = {
@@ -76,7 +82,7 @@ def _run_ytdlp(
                     return info
         except Exception as e:
             last_error = e
-            logger.warning(f"Стратегія {strategy} не вдалася: {e}. Пробуємо запасний варіант...")
+            logger.warning(f"Стратегія {strategy} завершилась помилкою: {e}. Пробуємо запасну...")
 
     if last_error:
         raise last_error
@@ -136,7 +142,6 @@ async def download_with_ytdlp(
                     )
                 )
             elif ext in IMAGE_EXTENSIONS:
-                # Зображення надсилаємо як document для максимальної якості без стиснення
                 items.append(
                     MediaItem(
                         media_type="document",

@@ -15,9 +15,22 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "50"))
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
-# Опціональний шлях до cookies
+# Опціональний шлях до cookies або передача cookies текстом через YOUTUBE_COOKIES
 COOKIES_FILE = os.getenv("COOKIES_FILE", "").strip()
+YOUTUBE_COOKIES_TEXT = os.getenv("YOUTUBE_COOKIES", "").strip()
+
+if YOUTUBE_COOKIES_TEXT:
+    cookies_path = BASE_DIR / "cookies.txt"
+    try:
+        cookies_path.write_text(YOUTUBE_COOKIES_TEXT, encoding="utf-8")
+        COOKIES_FILE = str(cookies_path)
+    except Exception:
+        pass
+
 if COOKIES_FILE and not os.path.isabs(COOKIES_FILE):
     COOKIES_FILE = str(BASE_DIR / COOKIES_FILE)
 if not COOKIES_FILE or not os.path.exists(COOKIES_FILE):
     COOKIES_FILE = None
+
+# Опціональний проксі для обходу блокувань дата-центрів
+PROXY = os.getenv("PROXY", "").strip() or None
