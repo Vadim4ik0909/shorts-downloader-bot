@@ -4,6 +4,7 @@ import shutil
 from pathlib import Path
 from typing import Callable, Optional
 
+from services.instagram import download_instagram
 from services.models import DownloadResult
 from services.tiktok import download_tiktok
 from services.ytdlp_service import download_with_ytdlp
@@ -26,11 +27,19 @@ async def download_media(
     on_progress: Optional[Callable[[float, float, float, Optional[float]], None]] = None
 ) -> Optional[DownloadResult]:
     """
-    Головний диспетчер завантаження з підтримкою прогрес-бару.
+    Головний диспетчер завантаження з підтримкою TikTok, Instagram (фото/каруселі/reels) та YouTube.
     """
     url_lower = url.lower()
 
-    # 1. Спеціальна обробка TikTok (підтримує відео та окремі фотографії слайдшоу)
+    # 1. Instagram (пости з фотографіями, каруселі та Reels у максимальній якості)
+    if any(domain in url_lower for domain in ["instagram.com", "instagr.am"]):
+        logger.info(f"Спроба завантажити Instagram через прямий сервіс: {url}")
+        res = await download_instagram(url)
+        if res and res.items:
+            return res
+        logger.info("Прямий сервіс Instagram не віддав медіа, перемикаємось на yt-dlp...")
+
+    # 2. TikTok (відео без водяного знака та окремі фотографії слайдшоу)
     if any(domain in url_lower for domain in ["tiktok.com", "douyin.com"]):
         logger.info(f"Спроба завантажити TikTok через TikWM API: {url}")
         result = await download_tiktok(url)
@@ -38,7 +47,7 @@ async def download_media(
             return result
         logger.info("TikWM не зміг завантажити контент, перемикаємось на yt-dlp...")
 
-    # 2. Завантаження через yt-dlp (YouTube Shorts, Instagram, TikTok fallback тощо)
+    # 3. Завантаження через yt-dlp (YouTube Shorts, X/Twitter, fallback тощо)
     logger.info(f"Завантаження через yt-dlp: {url}")
     return await download_with_ytdlp(url, on_progress=on_progress)
 

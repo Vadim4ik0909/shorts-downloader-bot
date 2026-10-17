@@ -3,9 +3,14 @@ __pycache__/
 *.py[cod]
 *$py.class
 .env
+.env.*
+*.session
+*.session-journal
+*.session*
 downloads/
 temp/
 cookies.txt
 *.log
 .DS_Store
 bot_cache.db
+anime_downloader/

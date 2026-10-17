@@ -3,7 +3,7 @@ from aiogram import Router
 from aiogram.types import (
     InlineQuery,
     InlineQueryResultArticle,
-    InlineQueryResultCachedPhoto,
+    InlineQueryResultCachedDocument,
     InlineQueryResultCachedVideo,
     InputTextMessageContent,
 )
@@ -35,7 +35,7 @@ async def inline_query_handler(query: InlineQuery):
         await query.answer(results=results, cache_time=5, is_personal=True)
         return
 
-    # 2. Якщо відео вже є в кеші — пропонуємо відправити його миттєво в будь-який чат!
+    # 2. Якщо медіа вже є в кеші — відправляємо миттєво в будь-який чат
     cached = get_cached_media(url)
     if cached and cached.items:
         results = []
@@ -49,12 +49,12 @@ async def inline_query_handler(query: InlineQuery):
                         caption=(item.caption or cached.title or "")[:1000]
                     )
                 )
-            elif item.media_type == "photo":
+            elif item.media_type in ("document", "photo"):
                 results.append(
-                    InlineQueryResultCachedPhoto(
-                        id=f"p_{idx}_{item.file_id[:10]}",
-                        photo_file_id=item.file_id,
-                        title=f"📸 {cached.title[:50]}",
+                    InlineQueryResultCachedDocument(
+                        id=f"d_{idx}_{item.file_id[:10]}",
+                        document_file_id=item.file_id,
+                        title=f"📁 {cached.title[:50]} (Оригінал)",
                         caption=(item.caption or cached.title or "")[:1000]
                     )
                 )
@@ -63,12 +63,12 @@ async def inline_query_handler(query: InlineQuery):
             await query.answer(results=results, cache_time=300, is_personal=False)
             return
 
-    # 3. Якщо відео ще немає в кеші — пропонуємо відкрити бота для першого завантаження
+    # 3. Якщо медіа ще немає в кеші — пропонуємо відкрити бота
     results = [
         InlineQueryResultArticle(
             id="download_prompt",
             title="📥 Медіа ще не завантажено",
-            description="Натисніть кнопку нижче, щоб відкрити бота і завантажити це відео",
+            description="Натисніть кнопку нижче, щоб відкрити бота і завантажити цей пост",
             input_message_content=InputTextMessageContent(
                 message_text=f"Завантажити медіа за посиланням: {url}\nчерез @shorts_METIOS_bot"
             )

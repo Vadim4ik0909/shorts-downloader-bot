@@ -2,7 +2,12 @@ import asyncio
 import logging
 from aiogram import Bot, F, Router
 from aiogram.enums import ChatAction
-from aiogram.types import FSInputFile, InputMediaPhoto, Message
+from aiogram.types import (
+    FSInputFile,
+    InputMediaDocument,
+    InputMediaPhoto,
+    Message,
+)
 
 from services import (
     CachedItem,
@@ -22,7 +27,7 @@ router = Router()
 
 
 async def _keep_chat_action_alive(bot: Bot, chat_id: int, action: ChatAction, stop_event: asyncio.Event):
-    """Періодично надсилає статус 'завантаження відео/фото' під час очікування."""
+    """Періодично надсилає статус 'завантаження відео/документа' під час очікування."""
     while not stop_event.is_set():
         try:
             await bot.send_chat_action(chat_id=chat_id, action=action)
@@ -46,8 +51,8 @@ async def handle_link(message: Message, bot: Bot):
     cached = get_cached_media(url)
     if cached and cached.items:
         logger.info(f"Миттєва відправка з кешу для {url}")
-        photos = [i for i in cached.items if i.media_type == "photo"]
         videos = [i for i in cached.items if i.media_type == "video"]
+        documents = [i for i in cached.items if i.media_type in ("document", "photo")]
         audios = [i for i in cached.items if i.media_type == "audio"]
 
         for v in videos:
@@ -61,20 +66,20 @@ async def handle_link(message: Message, bot: Bot):
                 supports_streaming=True
             )
 
-        if photos:
-            if len(photos) == 1:
-                caption = (photos[0].caption or cached.title or "")[:1000]
-                await message.reply_photo(photo=photos[0].file_id, caption=caption if caption else None)
+        if documents:
+            if len(documents) == 1:
+                caption = (documents[0].caption or cached.title or "")[:1000]
+                await message.reply_document(document=documents[0].file_id, caption=caption if caption else None)
             else:
                 chunk_size = 10
-                for chunk_idx in range(0, len(photos), chunk_size):
-                    chunk = photos[chunk_idx:chunk_idx + chunk_size]
+                for chunk_idx in range(0, len(documents), chunk_size):
+                    chunk = documents[chunk_idx:chunk_idx + chunk_size]
                     media_group = [
-                        InputMediaPhoto(
-                            media=p.file_id,
-                            caption=((p.caption or cached.title or "")[:1000]) if (chunk_idx == 0 and idx == 0) else None
+                        InputMediaDocument(
+                            media=doc.file_id,
+                            caption=((doc.caption or cached.title or "")[:1000]) if (chunk_idx == 0 and idx == 0) else None
                         )
-                        for idx, p in enumerate(chunk)
+                        for idx, doc in enumerate(chunk)
                     ]
                     await message.reply_media_group(media=media_group)
 
@@ -88,12 +93,11 @@ async def handle_link(message: Message, bot: Bot):
 
     stop_action_event = asyncio.Event()
     action_task = asyncio.create_task(
-        _keep_chat_action_alive(bot, message.chat.id, ChatAction.UPLOAD_VIDEO, stop_action_event)
+        _keep_chat_action_alive(bot, message.chat.id, ChatAction.UPLOAD_DOCUMENT, stop_action_event)
     )
 
     result = None
     try:
-        # Функція сповіщення про позицію в черзі
         async def on_queue_waiting(position: int):
             try:
                 await status_msg.edit_text(
@@ -103,11 +107,9 @@ async def handle_link(message: Message, bot: Bot):
             except Exception:
                 pass
 
-        # Вхід у чергу завантажень
         async with download_queue_slot(on_waiting=on_queue_waiting):
             throttler = ProgressThrottler(interval_seconds=2.0)
 
-            # Оновлення прогрес-бару в реальному часі
             async def on_progress(percent: float, downloaded: float, total: float, speed: float):
                 progress_text = render_progress_bar(percent, downloaded, total, speed)
                 if throttler.should_update(progress_text):
@@ -122,18 +124,19 @@ async def handle_link(message: Message, bot: Bot):
             await status_msg.edit_text(
                 "❌ **Не вдалося завантажити контент за цим посиланням.**\n\n"
                 "Можливі причини:\n"
-                "• Відео є приватним або видаленим\n"
+                "• Відео/пост є приватним або видаленим\n"
                 "• Платформа тимчасово обмежила доступ"
             )
             return
 
-        photos = [item for item in result.items if item.media_type == "photo"]
         videos = [item for item in result.items if item.media_type == "video"]
+        # Фотографії та документи надсилаємо як нестиснені оригінальні файли для максимальної якості
+        documents = [item for item in result.items if item.media_type in ("document", "photo")]
         audios = [item for item in result.items if item.media_type == "audio"]
 
         cached_items_to_save = []
 
-        # Відправка відео
+        # 1. Відправка відео
         for video_item in videos:
             if video_item.file_path.exists():
                 caption = (video_item.caption or result.title or "")[:1000]
@@ -158,32 +161,32 @@ async def handle_link(message: Message, bot: Bot):
                         )
                     )
 
-        # Відправка фото
-        if photos:
-            if len(photos) == 1:
-                photo_file = FSInputFile(photos[0].file_path)
-                caption = (photos[0].caption or result.title or "")[:1000]
-                sent_msg = await message.reply_photo(photo=photo_file, caption=caption if caption else None)
-                if sent_msg.photo:
+        # 2. Відправка фотографій у вигляді файлів/документів (100% оригінальна якість без стиснення Telegram)
+        if documents:
+            if len(documents) == 1:
+                doc_file = FSInputFile(documents[0].file_path)
+                caption = (documents[0].caption or result.title or "")[:1000]
+                sent_msg = await message.reply_document(document=doc_file, caption=caption if caption else None)
+                if sent_msg.document:
                     cached_items_to_save.append(
                         CachedItem(
-                            media_type="photo",
-                            file_id=sent_msg.photo[-1].file_id,
+                            media_type="document",
+                            file_id=sent_msg.document.file_id,
                             caption=caption
                         )
                     )
             else:
                 chunk_size = 10
-                for chunk_idx in range(0, len(photos), chunk_size):
-                    chunk = photos[chunk_idx:chunk_idx + chunk_size]
+                for chunk_idx in range(0, len(documents), chunk_size):
+                    chunk = documents[chunk_idx:chunk_idx + chunk_size]
                     media_group = []
 
-                    for idx, photo_item in enumerate(chunk):
-                        if photo_item.file_path.exists():
-                            caption = ((photo_item.caption or result.title or "")[:1000]) if (chunk_idx == 0 and idx == 0) else None
+                    for idx, doc_item in enumerate(chunk):
+                        if doc_item.file_path.exists():
+                            caption = ((doc_item.caption or result.title or "")[:1000]) if (chunk_idx == 0 and idx == 0) else None
                             media_group.append(
-                                InputMediaPhoto(
-                                    media=FSInputFile(photo_item.file_path),
+                                InputMediaDocument(
+                                    media=FSInputFile(doc_item.file_path),
                                     caption=caption
                                 )
                             )
@@ -191,15 +194,15 @@ async def handle_link(message: Message, bot: Bot):
                     if media_group:
                         sent_msgs = await message.reply_media_group(media=media_group)
                         for s_msg in sent_msgs:
-                            if s_msg.photo:
+                            if s_msg.document:
                                 cached_items_to_save.append(
                                     CachedItem(
-                                        media_type="photo",
-                                        file_id=s_msg.photo[-1].file_id
+                                        media_type="document",
+                                        file_id=s_msg.document.file_id
                                     )
                                 )
 
-        # Відправка аудіо
+        # 3. Відправка аудіо
         for audio_item in audios:
             if audio_item.file_path.exists():
                 caption = (audio_item.caption or "Музична доріжка")[:1000]
@@ -216,11 +219,10 @@ async def handle_link(message: Message, bot: Bot):
                         )
                     )
 
-        # Зберігаємо file_id у SQLite кеш для миттєвої відправки наступного разу!
+        # Збереження в SQLite кеш
         if cached_items_to_save:
             save_cached_media(url, result.title, cached_items_to_save)
 
-        # Очищення повідомлення статусу
         try:
             await status_msg.delete()
         except Exception:
