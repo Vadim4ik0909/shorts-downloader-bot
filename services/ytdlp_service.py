@@ -7,7 +7,7 @@ from typing import Callable, Optional, Tuple
 import yt_dlp
 
 from config import COOKIES_FILE, PROXY, TEMP_DIR
-from services.compressor import compress_video_if_needed
+from services.compressor import ensure_telegram_compatible_high_quality
 from services.models import DownloadResult, MediaItem
 
 logger = logging.getLogger(__name__)
@@ -98,7 +98,12 @@ def _run_ytdlp(
                 "no_warnings": True,
                 "noplaylist": is_youtube,
                 "merge_output_format": "mp4",
-                "format": "bestvideo+bestaudio/best",
+                # Пріоритет максимальної якості: спочатку найвищий бітрейт H.264 (AVC1) до 2160p + чистий AAC,
+                # щоб Telegram відтворював 1080p напряму без перекодування до 360p
+                "format": "bestvideo[vcodec^=avc1][height<=2160]+bestaudio[acodec^=mp4a]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
+                "postprocessor_args": {
+                    "Merger": ["-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart"],
+                },
                 "progress_hooks": [ytdlp_progress_hook],
                 "remote_components": ["ejs:github"],
             }
@@ -164,18 +169,18 @@ async def download_with_ytdlp(
             ext = file_path.suffix.lower()
 
             if ext in VIDEO_EXTENSIONS:
-                final_video_path = await compress_video_if_needed(file_path)
+                final_video_path, meta = await ensure_telegram_compatible_high_quality(file_path)
 
-                duration = info.get("duration")
-                width = info.get("width")
-                height = info.get("height")
+                duration = meta.get("duration") or info.get("duration")
+                width = meta.get("width") or info.get("width")
+                height = meta.get("height") or info.get("height")
                 items.append(
                     MediaItem(
                         media_type="video",
                         file_path=final_video_path,
                         caption=title,
-                        width=width,
-                        height=height,
+                        width=int(width) if width else None,
+                        height=int(height) if height else None,
                         duration=int(duration) if duration else None
                     )
                 )
