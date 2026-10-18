@@ -81,10 +81,13 @@ def _run_ytdlp(
         None,
     ] if is_youtube else [None]
 
-    # Якщо кукі встановлені, спочатку пробуємо з ними.
-    # Якщо кукі заблоковані YouTube (помилка 'The page needs to be reloaded'),
-    # автоматично пробуємо ці ж стратегії БЕЗ cookies!
-    cookie_attempts = [COOKIES_FILE, None] if (COOKIES_FILE and os.path.exists(COOKIES_FILE)) else [None]
+    # Найкраща перевірена практика:
+    # 1. Спочатку завантажуємо анонімно (None) через web_safari / web_embedded.
+    #    Це працює для 99% шортсів блискавично, без ризику блокування сесії 'The page needs to be reloaded'.
+    # 2. Якщо відео приватне або 18+ (потрібна авторизація) — використовуємо COOKIES_FILE як резерв.
+    cookie_attempts = [None]
+    if COOKIES_FILE and os.path.exists(COOKIES_FILE):
+        cookie_attempts.append(COOKIES_FILE)
 
     last_error = None
     for cookie_file in cookie_attempts:
