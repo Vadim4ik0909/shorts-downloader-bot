@@ -69,8 +69,11 @@ def _run_ytdlp(
                 except Exception:
                     pass
 
-    # Стратегії клієнтів для YouTube з підтримкою обходу PO-Token ('formats': ['missing_pot'])
+    # Стратегії клієнтів для YouTube з підтримкою обходу блокувань (включаючи web_safari, web_embedded та mweb)
     strategies = [
+        {"player_client": ["web_safari", "web_embedded"]},
+        {"player_client": ["web_embedded"]},
+        {"player_client": ["mweb"], "formats": ["missing_pot"]},
         {"player_client": ["android", "ios"], "formats": ["missing_pot"]},
         {"player_client": ["visionos", "android"], "formats": ["missing_pot"]},
         {"player_client": ["web"], "formats": ["missing_pot"]},
@@ -78,9 +81,10 @@ def _run_ytdlp(
         None,
     ] if is_youtube else [None]
 
-    # Якщо кукі встановлені, пробуємо спочатку з ними.
-    # Якщо кукі зламані, у запасному циклі пробуємо без них.
-    cookie_attempts = [COOKIES_FILE] if (COOKIES_FILE and os.path.exists(COOKIES_FILE)) else [None]
+    # Якщо кукі встановлені, спочатку пробуємо з ними.
+    # Якщо кукі заблоковані YouTube (помилка 'The page needs to be reloaded'),
+    # автоматично пробуємо ці ж стратегії БЕЗ cookies!
+    cookie_attempts = [COOKIES_FILE, None] if (COOKIES_FILE and os.path.exists(COOKIES_FILE)) else [None]
 
     last_error = None
     for cookie_file in cookie_attempts:
