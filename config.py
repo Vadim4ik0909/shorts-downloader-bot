@@ -56,13 +56,17 @@ if YOUTUBE_COOKIES_TEXT:
 if COOKIES_FILE and not os.path.isabs(COOKIES_FILE):
     COOKIES_FILE = str(BASE_DIR / COOKIES_FILE)
 
-# Валідація cookies: якщо файл пошкоджений, відключаємо його, щоб не ламати запити
+# Валідація cookies: якщо файл пошкоджений, видаляємо його і відключаємо, щоб не ламати запити
 if COOKIES_FILE and os.path.exists(COOKIES_FILE):
     try:
         import yt_dlp
         with yt_dlp.YoutubeDL({"cookiefile": COOKIES_FILE, "quiet": True}) as _:
             pass
     except Exception:
+        try:
+            Path(COOKIES_FILE).unlink(missing_ok=True)
+        except Exception:
+            pass
         COOKIES_FILE = None
 else:
     COOKIES_FILE = None

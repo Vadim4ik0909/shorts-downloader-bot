@@ -126,17 +126,26 @@ def _run_ytdlp(
                         return info
             except Exception as e:
                 err_text = str(e).lower()
-                # Якщо файл cookies пошкоджений або відхилений, не фіксуємо це як фатальну помилку,
-                # а перериваємо спроби з цим файлом та переходимо до безкукісного завантаження
+                # Якщо помилка викликана файлом cookies, негайно повторюємо цей самий запит чисто без cookies
                 if any(k in err_text for k in ["does not look like a netscape format cookies file", "cookie", "cookiefile"]):
-                    logger.warning(f"Файл cookies пошкоджений ({e}), переходимо до чистого завантаження без cookies...")
-                    break
-                last_error = e
-                logger.warning(f"Стратегія {strategy} (cookies={bool(cookie_file)}) завершилась помилкою: {e}. Пробуємо наступну...")
+                    logger.warning(f"Файл cookies дав збій ({e}), повторюємо стратегію {strategy} без cookies...")
+                    ydl_clean_opts = dict(ydl_opts)
+                    ydl_clean_opts.pop("cookiefile", None)
+                    try:
+                        with yt_dlp.YoutubeDL(ydl_clean_opts) as ydl_clean:
+                            info = ydl_clean.extract_info(url, download=True)
+                            if info:
+                                return info
+                    except Exception as clean_err:
+                        last_error = clean_err
+                        logger.warning(f"Стратегія {strategy} без cookies теж завершилась помилкою: {clean_err}")
+                else:
+                    last_error = e
+                    logger.warning(f"Стратегія {strategy} (cookies={bool(cookie_file)}) завершилась помилкою: {e}. Пробуємо наступну...")
 
     if last_error:
         raise last_error
-    return None
+    raise RuntimeError("Не вдалося завантажити медіа жодною зі стратегій.")
 
 
 async def download_with_ytdlp(
