@@ -20,9 +20,13 @@ COOKIES_FILE = os.getenv("COOKIES_FILE", "").strip()
 YOUTUBE_COOKIES_TEXT = os.getenv("YOUTUBE_COOKIES", "").strip()
 
 if YOUTUBE_COOKIES_TEXT:
+    # Відновлюємо екрановані переноси рядків або табуляції, якщо вони потрапили як рядок
+    raw_cookies = YOUTUBE_COOKIES_TEXT.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\t", "\t")
+    if not raw_cookies.startswith("# Netscape"):
+        raw_cookies = "# Netscape HTTP Cookie File\n" + raw_cookies
     cookies_path = BASE_DIR / "cookies.txt"
     try:
-        cookies_path.write_text(YOUTUBE_COOKIES_TEXT, encoding="utf-8")
+        cookies_path.write_text(raw_cookies, encoding="utf-8")
         COOKIES_FILE = str(cookies_path)
     except Exception:
         pass

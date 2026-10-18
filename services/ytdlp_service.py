@@ -20,6 +20,11 @@ AUDIO_EXTENSIONS = {".mp3", ".m4a", ".aac", ".wav", ".ogg"}
 def format_diagnostic_error(err: Exception) -> str:
     """Формує зрозуміле діагностичне повідомлення про причину збою."""
     err_str = str(err).lower()
+    if any(k in err_str for k in ["does not look like a netscape format cookies file", "cookie", "cookiefile"]):
+        return (
+            "🍪 **Помилка у форматі кукісів `YOUTUBE_COOKIES`!**\n\n"
+            "YouTube не зміг розпізнати передані cookies. Будь ласка, скопіюйте їх заново з розширення кнопкою **Copy**."
+        )
     if any(k in err_str for k in ["this video is unavailable", "not found", "404", "does not exist"]):
         return "❌ **Це відео або пост було видалено автором із платформи (404 Not Found).**"
     if any(k in err_str for k in ["private video", "sign in if you've been granted access"]):
@@ -31,9 +36,13 @@ def format_diagnostic_error(err: Exception) -> str:
             "⚠️ **YouTube тимчасово обмежив запит через анти-бот фільтр дата-центру.**\n\n"
             "💡 **Рішення:**\n"
             "• Зачекайте 1-2 хвилини та повторіть спробу.\n"
-            "• Або вставте ваші кукі в Railway у змінну `YOUTUBE_COOKIES` для 100% доступу без перевірок."
+            "• Або оновіть кукі у змінній `YOUTUBE_COOKIES` на Railway."
         )
-    return "❌ **Не вдалося завантажити контент за цим посиланням.**\n\nМожливо, відео недоступне або платформа тимчасово обмежила доступ."
+    clean_err = str(err).replace("ERROR: ", "").strip()
+    return (
+        f"❌ **Не вдалося завантажити контент за цим посиланням.**\n\n"
+        f"🔍 **Причина помилки:**\n`{clean_err[:300]}`"
+    )
 
 
 def _run_ytdlp(
@@ -60,48 +69,52 @@ def _run_ytdlp(
                 except Exception:
                     pass
 
-    # Стратегії клієнтів для YouTube:
-    # 1. visionos + android (найнадійніша комбінація без бот-блокувань)
-    # 2. android + ios
-    # 3. default (без обмежень)
+    # Стратегії клієнтів для YouTube з підтримкою обходу PO-Token ('formats': ['missing_pot'])
     strategies = [
-        {"player_client": ["visionos", "android"]},
-        {"player_client": ["android", "ios"]},
+        {"player_client": ["android", "ios"], "formats": ["missing_pot"]},
+        {"player_client": ["visionos", "android"], "formats": ["missing_pot"]},
+        {"player_client": ["web"], "formats": ["missing_pot"]},
+        {"formats": ["missing_pot"]},
         None,
     ] if is_youtube else [None]
 
+    # Якщо кукі встановлені, пробуємо спочатку з ними.
+    # Якщо кукі зламані, у запасному циклі пробуємо без них.
+    cookie_attempts = [COOKIES_FILE] if (COOKIES_FILE and os.path.exists(COOKIES_FILE)) else [None]
+
     last_error = None
-    for strategy in strategies:
-        ydl_opts = {
-            "outtmpl": str(work_dir / "%(autonumber)02d_%(id)s.%(ext)s"),
-            "quiet": True,
-            "no_warnings": True,
-            "noplaylist": is_youtube,
-            "merge_output_format": "mp4",
-            "format": "bestvideo+bestaudio/best",
-            "progress_hooks": [ytdlp_progress_hook],
-            "remote_components": ["ejs:github"],
-        }
-
-        if PROXY:
-            ydl_opts["proxy"] = PROXY
-
-        if is_youtube and strategy:
-            ydl_opts["extractor_args"] = {
-                "youtube": strategy
+    for cookie_file in cookie_attempts:
+        for strategy in strategies:
+            ydl_opts = {
+                "outtmpl": str(work_dir / "%(autonumber)02d_%(id)s.%(ext)s"),
+                "quiet": True,
+                "no_warnings": True,
+                "noplaylist": is_youtube,
+                "merge_output_format": "mp4",
+                "format": "bestvideo+bestaudio/best",
+                "progress_hooks": [ytdlp_progress_hook],
+                "remote_components": ["ejs:github"],
             }
 
-        if COOKIES_FILE and os.path.exists(COOKIES_FILE):
-            ydl_opts["cookiefile"] = COOKIES_FILE
+            if PROXY:
+                ydl_opts["proxy"] = PROXY
 
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                if info:
-                    return info
-        except Exception as e:
-            last_error = e
-            logger.warning(f"Стратегія {strategy} завершилась помилкою: {e}. Пробуємо запасну...")
+            if is_youtube and strategy:
+                ydl_opts["extractor_args"] = {
+                    "youtube": strategy
+                }
+
+            if cookie_file and os.path.exists(cookie_file):
+                ydl_opts["cookiefile"] = cookie_file
+
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                    if info:
+                        return info
+            except Exception as e:
+                last_error = e
+                logger.warning(f"Стратегія {strategy} (cookies={bool(cookie_file)}) завершилась помилкою: {e}. Пробуємо наступну...")
 
     if last_error:
         raise last_error
