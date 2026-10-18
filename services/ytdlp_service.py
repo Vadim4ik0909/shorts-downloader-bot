@@ -125,6 +125,12 @@ def _run_ytdlp(
                     if info:
                         return info
             except Exception as e:
+                err_text = str(e).lower()
+                # Якщо файл cookies пошкоджений або відхилений, не фіксуємо це як фатальну помилку,
+                # а перериваємо спроби з цим файлом та переходимо до безкукісного завантаження
+                if any(k in err_text for k in ["does not look like a netscape format cookies file", "cookie", "cookiefile"]):
+                    logger.warning(f"Файл cookies пошкоджений ({e}), переходимо до чистого завантаження без cookies...")
+                    break
                 last_error = e
                 logger.warning(f"Стратегія {strategy} (cookies={bool(cookie_file)}) завершилась помилкою: {e}. Пробуємо наступну...")
 

@@ -1,11 +1,15 @@
 # Офіційний легкий образ Python
 FROM python:3.12-slim
 
-# Встановлюємо ffmpeg, nodejs (для вирішення JS-челенджів та підписів YouTube/Instagram) та curl
+# Встановлюємо ffmpeg, nodejs, curl, unzip та deno (для розшифрування JS челенджів YouTube)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     nodejs \
     curl \
+    unzip \
+    && curl -fsSL https://deno.land/install.sh | sh \
+    && mv /root/.deno/bin/deno /usr/local/bin/ \
+    && apt-get purge -y unzip \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
