@@ -20,10 +20,17 @@ AUDIO_EXTENSIONS = {".mp3", ".m4a", ".aac", ".wav", ".ogg"}
 def format_diagnostic_error(err: Exception) -> str:
     """Формує зрозуміле діагностичне повідомлення про причину збою."""
     err_str = str(err).lower()
-    if any(k in err_str for k in ["does not look like a netscape format cookies file", "cookie", "cookiefile"]):
+    if any(k in err_str for k in ["confirm you're not a bot", "bot", "too many requests", "429"]):
+        return (
+            "⚠️ **YouTube обмежив запит через анти-бот перевірку дата-центру.**\n\n"
+            "Сервери Railway знаходяться в американському дата-центрі, тому YouTube періодично вимагає підтвердження особи.\n\n"
+            "💡 **Як вирішити:**\n"
+            "• Передайте ваші cookies у змінну `YOUTUBE_COOKIES` на Railway (закодовані в Base64 або чистим текстом)."
+        )
+    if any(k in err_str for k in ["does not look like a netscape format cookies file", "unrecognized cookie format"]):
         return (
             "🍪 **Помилка у форматі кукісів `YOUTUBE_COOKIES`!**\n\n"
-            "YouTube не зміг розпізнати передані cookies. Будь ласка, скопіюйте їх заново з розширення кнопкою **Copy**."
+            "YouTube не зміг розпізнати передані cookies. Будь ласка, скопіюйте їх заново з розширення або передайте в Base64."
         )
     if any(k in err_str for k in ["this video is unavailable", "not found", "404", "does not exist"]):
         return "❌ **Це відео або пост було видалено автором із платформи (404 Not Found).**"
@@ -31,13 +38,6 @@ def format_diagnostic_error(err: Exception) -> str:
         return "🔒 **Це відео є приватним. Доступ закрито автором.**"
     if any(k in err_str for k in ["sign in to confirm your age", "age-restricted", "confirm you're 18"]):
         return "🔞 **Це відео має вікові обмеження (18+) і вимагає входу через Google-акаунт.**"
-    if any(k in err_str for k in ["confirm you're not a bot", "bot", "too many requests", "429"]):
-        return (
-            "⚠️ **YouTube тимчасово обмежив запит через анти-бот фільтр дата-центру.**\n\n"
-            "💡 **Рішення:**\n"
-            "• Зачекайте 1-2 хвилини та повторіть спробу.\n"
-            "• Або оновіть кукі у змінній `YOUTUBE_COOKIES` на Railway."
-        )
     clean_err = str(err).replace("ERROR: ", "").strip()
     return (
         f"❌ **Не вдалося завантажити контент за цим посиланням.**\n\n"
@@ -69,14 +69,14 @@ def _run_ytdlp(
                 except Exception:
                     pass
 
-    # Стратегії клієнтів для YouTube з підтримкою обходу блокувань (включаючи web_safari, web_embedded та mweb)
+    # Стратегії клієнтів для YouTube з підтримкою обходу блокувань
     strategies = [
         {"player_client": ["web_safari", "web_embedded"]},
-        {"player_client": ["web_embedded"]},
-        {"player_client": ["mweb"], "formats": ["missing_pot"]},
         {"player_client": ["android", "ios"], "formats": ["missing_pot"]},
-        {"player_client": ["visionos", "android"], "formats": ["missing_pot"]},
-        {"player_client": ["web"], "formats": ["missing_pot"]},
+        {"player_client": ["ios"]},
+        {"player_client": ["android"]},
+        {"player_client": ["mweb"], "formats": ["missing_pot"]},
+        {"player_client": ["tv"]},
         {"formats": ["missing_pot"]},
         None,
     ] if is_youtube else [None]

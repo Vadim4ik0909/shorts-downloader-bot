@@ -44,7 +44,16 @@ def normalize_netscape_cookies(text: str) -> str:
 
 
 if YOUTUBE_COOKIES_TEXT:
-    raw_cookies = YOUTUBE_COOKIES_TEXT.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\t", "\t")
+    raw_cookies = YOUTUBE_COOKIES_TEXT
+    try:
+        import base64
+        decoded = base64.b64decode(YOUTUBE_COOKIES_TEXT.strip()).decode("utf-8")
+        if "\t" in decoded or "Netscape" in decoded:
+            raw_cookies = decoded
+    except Exception:
+        pass
+
+    raw_cookies = raw_cookies.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\t", "\t")
     clean_cookies = normalize_netscape_cookies(raw_cookies)
     cookies_path = BASE_DIR / "cookies.txt"
     try:
@@ -52,6 +61,11 @@ if YOUTUBE_COOKIES_TEXT:
         COOKIES_FILE = str(cookies_path)
     except Exception:
         pass
+
+if not COOKIES_FILE:
+    local_cookies = BASE_DIR / "cookies.txt"
+    if local_cookies.exists():
+        COOKIES_FILE = str(local_cookies)
 
 if COOKIES_FILE and not os.path.isabs(COOKIES_FILE):
     COOKIES_FILE = str(BASE_DIR / COOKIES_FILE)
