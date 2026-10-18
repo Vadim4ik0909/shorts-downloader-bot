@@ -2,12 +2,13 @@ import logging
 import re
 import shutil
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple
 
 from services.cache import normalize_url
 from services.instagram import download_instagram
 from services.models import DownloadResult
 from services.tiktok import download_tiktok
+from services.youtube_post import handle_youtube_community_post
 from services.ytdlp_service import download_with_ytdlp
 
 logger = logging.getLogger(__name__)
@@ -26,32 +27,38 @@ def extract_first_url(text: str) -> Optional[str]:
 async def download_media(
     url: str,
     on_progress: Optional[Callable[[float, float, float, Optional[float]], None]] = None
-) -> Optional[DownloadResult]:
+) -> Tuple[Optional[DownloadResult], Optional[str]]:
     """
-    Головний диспетчер завантаження з підтримкою TikTok, Instagram (фото/каруселі/reels) та YouTube.
+    Головний диспетчер завантаження з точною діагностикою помилок.
+    Повертає кортеж: (DownloadResult, error_message).
     """
-    url = normalize_url(url)
-    url_lower = url.lower()
+    clean_url = normalize_url(url)
+    url_lower = clean_url.lower()
 
-    # 1. Instagram (пости з фотографіями, каруселі та Reels у максимальній якості)
+    # 1. Спеціальна обробка публікацій спільноти YouTube (/post/... або /community)
+    if any(k in url_lower for k in ["youtube.com/post", "youtu.be/post", "/community"]):
+        logger.info(f"Обробка допису спільноти YouTube: {clean_url}")
+        return await handle_youtube_community_post(clean_url)
+
+    # 2. Instagram (пости з фотографіями, каруселі та Reels у максимальній якості)
     if any(domain in url_lower for domain in ["instagram.com", "instagr.am"]):
-        logger.info(f"Спроба завантажити Instagram через прямий сервіс: {url}")
-        res = await download_instagram(url)
+        logger.info(f"Спроба завантажити Instagram через прямий сервіс: {clean_url}")
+        res = await download_instagram(clean_url)
         if res and res.items:
-            return res
+            return res, None
         logger.info("Прямий сервіс Instagram не віддав медіа, перемикаємось на yt-dlp...")
 
-    # 2. TikTok (відео без водяного знака та окремі фотографії слайдшоу)
+    # 3. TikTok (відео без водяного знака та окремі фотографії слайдшоу)
     if any(domain in url_lower for domain in ["tiktok.com", "douyin.com"]):
-        logger.info(f"Спроба завантажити TikTok через TikWM API: {url}")
-        result = await download_tiktok(url)
+        logger.info(f"Спроба завантажити TikTok через TikWM API: {clean_url}")
+        result = await download_tiktok(clean_url)
         if result and result.items:
-            return result
+            return result, None
         logger.info("TikWM не зміг завантажити контент, перемикаємось на yt-dlp...")
 
-    # 3. Завантаження через yt-dlp (YouTube Shorts, X/Twitter, fallback тощо)
-    logger.info(f"Завантаження через yt-dlp: {url}")
-    return await download_with_ytdlp(url, on_progress=on_progress)
+    # 4. Завантаження через yt-dlp (YouTube Shorts, X/Twitter, fallback тощо)
+    logger.info(f"Завантаження через yt-dlp: {clean_url}")
+    return await download_with_ytdlp(clean_url, on_progress=on_progress)
 
 
 def cleanup_result(result: Optional[DownloadResult]) -> None:

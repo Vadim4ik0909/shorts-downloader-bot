@@ -3,7 +3,7 @@ import logging
 import os
 import uuid
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple
 import yt_dlp
 
 from config import COOKIES_FILE, PROXY, TEMP_DIR
@@ -15,6 +15,25 @@ logger = logging.getLogger(__name__)
 VIDEO_EXTENSIONS = {".mp4", ".mkv", ".webm", ".mov"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 AUDIO_EXTENSIONS = {".mp3", ".m4a", ".aac", ".wav", ".ogg"}
+
+
+def format_diagnostic_error(err: Exception) -> str:
+    """Формує зрозуміле діагностичне повідомлення про причину збою."""
+    err_str = str(err).lower()
+    if any(k in err_str for k in ["this video is unavailable", "not found", "404", "does not exist"]):
+        return "❌ **Це відео або пост було видалено автором із платформи (404 Not Found).**"
+    if any(k in err_str for k in ["private video", "sign in if you've been granted access"]):
+        return "🔒 **Це відео є приватним. Доступ закрито автором.**"
+    if any(k in err_str for k in ["sign in to confirm your age", "age-restricted", "confirm you're 18"]):
+        return "🔞 **Це відео має вікові обмеження (18+) і вимагає входу через Google-акаунт.**"
+    if any(k in err_str for k in ["confirm you're not a bot", "bot", "too many requests", "429"]):
+        return (
+            "⚠️ **YouTube тимчасово обмежив запит через анти-бот фільтр дата-центру.**\n\n"
+            "💡 **Рішення:**\n"
+            "• Зачекайте 1-2 хвилини та повторіть спробу.\n"
+            "• Або вставте ваші кукі в Railway у змінну `YOUTUBE_COOKIES` для 100% доступу без перевірок."
+        )
+    return "❌ **Не вдалося завантажити контент за цим посиланням.**\n\nМожливо, відео недоступне або платформа тимчасово обмежила доступ."
 
 
 def _run_ytdlp(
@@ -41,8 +60,8 @@ def _run_ytdlp(
                 except Exception:
                     pass
 
-    # Стратегії для YouTube:
-    # 1. visionos + android (VisionOS наразі взагалі не підпадає під бот-блокування)
+    # Стратегії клієнтів для YouTube:
+    # 1. visionos + android (найнадійніша комбінація без бот-блокувань)
     # 2. android + ios
     # 3. default (без обмежень)
     strategies = [
@@ -92,10 +111,9 @@ def _run_ytdlp(
 async def download_with_ytdlp(
     url: str,
     on_progress: Optional[Callable[[float, float, float, Optional[float]], None]] = None
-) -> Optional[DownloadResult]:
+) -> Tuple[Optional[DownloadResult], Optional[str]]:
     """
-    Асинхронне завантаження медіа за допомогою yt-dlp з підтримкою прогрес-бару,
-    мультистратегій YouTube та автоматичного стиснення відео через ffmpeg.
+    Асинхронне завантаження медіа за допомогою yt-dlp з поверненням діагностичного повідомлення.
     """
     session_id = uuid.uuid4().hex[:8]
     work_dir = TEMP_DIR / f"ytdlp_{session_id}"
@@ -105,7 +123,7 @@ async def download_with_ytdlp(
     try:
         info = await asyncio.to_thread(_run_ytdlp, url, work_dir, loop, on_progress)
         if not info:
-            return None
+            return None, "❌ Не вдалося отримати інформацію про медіа."
 
         title = info.get("title") or "Завантажене медіа"
         if not title and "entries" in info and info["entries"]:
@@ -119,7 +137,7 @@ async def download_with_ytdlp(
         )
 
         if not downloaded_files:
-            return None
+            return None, "❌ Жодного файлу не було завантажено."
 
         items = []
         for file_path in downloaded_files:
@@ -159,15 +177,15 @@ async def download_with_ytdlp(
                 )
 
         if not items:
-            return None
+            return None, "❌ Не знайдено підтримуваних відео або фото у файлі."
 
         return DownloadResult(
             title=title,
             items=items,
             temp_dir=work_dir,
             source="yt-dlp"
-        )
+        ), None
 
     except Exception as e:
         logger.error(f"Помилка при роботі yt-dlp для {url}: {e}", exc_info=True)
-        return None
+        return None, format_diagnostic_error(e)

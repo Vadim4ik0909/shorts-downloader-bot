@@ -118,15 +118,16 @@ async def handle_link(message: Message, bot: Bot):
                     except Exception:
                         pass
 
-            result = await download_media(url, on_progress=on_progress)
+            result, err_msg = await download_media(url, on_progress=on_progress)
 
         if not result or not result.items:
-            await status_msg.edit_text(
+            error_text = err_msg or (
                 "❌ **Не вдалося завантажити контент за цим посиланням.**\n\n"
                 "Можливі причини:\n"
-                "• Відео/пост є приватним або видаленим\n"
+                "• Відео або пост є приватним чи видаленим\n"
                 "• Платформа тимчасово обмежила доступ"
             )
+            await status_msg.edit_text(error_text, parse_mode="Markdown")
             return
 
         videos = [item for item in result.items if item.media_type == "video"]
