@@ -6,7 +6,11 @@ from services.cache import (
     normalize_url,
     save_cached_media,
 )
-from services.compressor import compress_video_if_needed
+from services.compressor import (
+    compress_video_if_needed,
+    ensure_telegram_compatible_high_quality,
+    get_video_metadata,
+)
 from services.downloader import cleanup_result, download_media, extract_first_url
 from services.instagram import download_instagram
 from services.models import DownloadResult, MediaItem
@@ -27,6 +31,8 @@ __all__ = [
     "CachedMedia",
     "normalize_url",
     "compress_video_if_needed",
+    "ensure_telegram_compatible_high_quality",
+    "get_video_metadata",
     "download_queue_slot",
     "render_progress_bar",
     "ProgressThrottler",

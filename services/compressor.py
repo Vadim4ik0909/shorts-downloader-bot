@@ -142,3 +142,9 @@ async def ensure_telegram_compatible_high_quality(video_path: Path) -> Tuple[Pat
             logger.warning(f"Не вдалося перекодувати в h264: {e}")
 
     return video_path, meta
+
+
+async def compress_video_if_needed(video_path: Path) -> Path:
+    """Зворотна сумісність: викликає ensure_telegram_compatible_high_quality та повертає оптимізований шлях."""
+    final_path, _ = await ensure_telegram_compatible_high_quality(video_path)
+    return final_path
